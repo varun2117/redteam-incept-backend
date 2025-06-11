@@ -48,44 +48,57 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// Import and use routes with error handling
-try {
-  const healthRoutes = require('../src/routes/health').default;
-  app.use('/api/health', healthRoutes);
-} catch (error) {
-  console.error('Error loading health routes:', error);
-  app.get('/api/health', (req, res) => {
-    res.json({ success: true, status: 'healthy', message: 'Fallback health check' });
+// Simple assessment endpoint without Prisma dependency initially
+app.post('/api/assessment/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Assessment endpoint test',
+    body: req.body,
+    timestamp: new Date().toISOString()
   });
-}
+});
 
-try {
-  const assessmentRoutes = require('../src/routes/assessment').default;
-  app.use('/api/assessment', assessmentRoutes);
-} catch (error) {
-  console.error('Error loading assessment routes:', error);
-  app.get('/api/assessment/*', (req, res) => {
+// Lazy load routes to avoid Prisma initialization issues
+app.use('/api/health', (req, res, next) => {
+  try {
+    const healthRoutes = require('../src/routes/health').default;
+    healthRoutes(req, res, next);
+  } catch (error) {
+    console.error('Error loading health routes:', error);
+    res.json({ success: true, status: 'healthy', message: 'Fallback health check' });
+  }
+});
+
+app.use('/api/assessment', (req, res, next) => {
+  // Skip test endpoint
+  if (req.path === '/test') return next();
+  
+  try {
+    const assessmentRoutes = require('../src/routes/assessment').default;
+    assessmentRoutes(req, res, next);
+  } catch (error) {
+    console.error('Error loading assessment routes:', error);
     res.status(503).json({ 
       success: false, 
       message: 'Assessment service temporarily unavailable',
-      error: 'Routes failed to load'
+      error: 'Prisma client not ready'
     });
-  });
-}
+  }
+});
 
-try {
-  const agentRoutes = require('../src/routes/agent').default;
-  app.use('/api/agent', agentRoutes);
-} catch (error) {
-  console.error('Error loading agent routes:', error);
-  app.get('/api/agent/*', (req, res) => {
+app.use('/api/agent', (req, res, next) => {
+  try {
+    const agentRoutes = require('../src/routes/agent').default;
+    agentRoutes(req, res, next);
+  } catch (error) {
+    console.error('Error loading agent routes:', error);
     res.status(503).json({ 
       success: false, 
       message: 'Agent service temporarily unavailable',
-      error: 'Routes failed to load'
+      error: 'Prisma client not ready'
     });
-  });
-}
+  }
+});
 
 // Global error handler
 app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
