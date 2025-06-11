@@ -7,8 +7,17 @@
   },
   "routes": [
     {
-      "src": "/(.*)",
+      "src": "/api/(.*)",
+      "dest": "/api/index.ts"
+    },
+    {
+      "src": "/(health|test|echo|env)",
+      "dest": "/api/index.ts"
+    },
+    {
+      "src": "/",
       "dest": "/api/index.ts"
     }
-  ]
+  ],
+  "outputDirectory": "public"
 }

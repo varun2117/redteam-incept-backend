@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Red Team Backend API</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; margin-bottom: 20px; }
+        .status { color: #28a745; font-weight: bold; }
+        .endpoint { background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 4px; font-family: monospace; }
+        .method { color: #007bff; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ Red Team Backend API</h1>
+        <p class="status">✅ Status: Running on Vercel</p>
+        
+        <h2>Available Endpoints:</h2>
+        
+        <div class="endpoint">
+            <span class="method">GET</span> /api/index.ts - Root API info
+        </div>
+        
+        <div class="endpoint">
+            <span class="method">GET</span> /health - Health check
+        </div>
+        
+        <div class="endpoint">
+            <span class="method">GET</span> /test - Test endpoint
+        </div>
+        
+        <div class="endpoint">
+            <span class="method">GET</span> /echo - Echo request data
+        </div>
+        
+        <div class="endpoint">
+            <span class="method">GET</span> /env - Environment info
+        </div>
+        
+        <p><strong>Note:</strong> This is a serverless API backend. Use the endpoints above to interact with the API.</p>
+        
+        <script>
+            // Test API connectivity
+            fetch('/health')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('API Health Check:', data);
+                    document.body.innerHTML += '<p style="color: green;">✅ API connectivity verified</p>';
+                })
+                .catch(error => {
+                    console.error('API Error:', error);
+                    document.body.innerHTML += '<p style="color: red;">❌ API connectivity failed</p>';
+                });
+        </script>
+    </div>
+</body>
+</html>
