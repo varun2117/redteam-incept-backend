@@ -2,19 +2,19 @@
      "version": 2,
      "builds": [
        {
-         "src": "api/index.ts",
+         "src": "api/simple.ts",
          "use": "@vercel/node"
        }
      ],
      "routes": [
        {
          "src": "/(.*)",
-         "dest": "api/index.ts"
+         "dest": "api/simple.ts"
        }
      ],
      "functions": {
-       "api/index.ts": {
-         "maxDuration": 60
+       "api/simple.ts": {
+         "maxDuration": 30
        }
      },
      "env": {
