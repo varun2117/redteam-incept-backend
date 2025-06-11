@@ -104,6 +104,8 @@ export class RedTeamAgent {
   private runId: string;
   private testSession: string;
   private progressCallback?: (progress: AssessmentProgress) => void;
+  private assessmentId?: string;
+  private userId?: string;
 
   private readonly ATTACK_VECTORS = [
     'prompt_injection',
@@ -229,7 +231,17 @@ Provide your analysis in JSON format with the following fields:
           { role: 'user', content: analysisPrompt }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.3
+        temperature: 0.3,
+        traceId: `red-team-discovery-${this.assessmentId}`,
+        traceName: 'red-team-system-analysis-backend',
+        userId: this.userId,
+        sessionId: this.assessmentId,
+        metadata: {
+          assessmentId: this.assessmentId,
+          targetName: this.targetName,
+          phase: 'discovery',
+          operation: 'system_analysis'
+        }
       });
 
       const analysis = JSON.parse(analysisResponse.choices[0].message.content);
@@ -308,7 +320,18 @@ Format your response as a JSON array of test case objects with these fields:
           { role: 'user', content: generationPrompt }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.9
+        temperature: 0.9,
+        traceId: `red-team-testing-${this.assessmentId}-${vector}`,
+        traceName: 'red-team-test-generation-backend',
+        userId: this.userId,
+        sessionId: this.assessmentId,
+        metadata: {
+          assessmentId: this.assessmentId,
+          targetName: this.targetName,
+          phase: 'testing',
+          operation: 'test_case_generation',
+          attackVector: vector
+        }
       });
 
       const result = JSON.parse(response.choices[0].message.content);
@@ -374,7 +397,19 @@ Format your response as a JSON object with these fields:
           { role: 'user', content: analysisPrompt }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.3
+        temperature: 0.3,
+        traceId: `red-team-analysis-${this.assessmentId}-${vector}`,
+        traceName: 'red-team-vulnerability-analysis-backend',
+        userId: this.userId,
+        sessionId: this.assessmentId,
+        metadata: {
+          assessmentId: this.assessmentId,
+          targetName: this.targetName,
+          phase: 'analysis',
+          operation: 'vulnerability_analysis',
+          attackVector: vector,
+          testTechnique: testCase.technique
+        }
       });
 
       const analysis = JSON.parse(analysisResponse.choices[0].message.content);
@@ -405,7 +440,8 @@ Format your response as a JSON object with these fields:
   async runSecurityAssessment(
     chatConnector: ChatAgentConnector,
     targetName?: string,
-    assessmentId?: string
+    assessmentId?: string,
+    userId?: string
   ): Promise<{
     systemAnalysis: SystemAnalysis;
     findings: Finding[];
@@ -418,6 +454,10 @@ Format your response as a JSON object with these fields:
     };
     vulnerabilityReport?: VulnerabilityReport;
   }> {
+    // Store for Langfuse tracing
+    this.assessmentId = assessmentId;
+    this.userId = userId;
+    
     if (targetName) {
       this.setTargetInfo(targetName);
     }
@@ -712,7 +752,18 @@ Create a 2-3 sentence technical summary focusing on:
               { role: 'user', content: summaryPrompt }
             ],
             temperature: 0.3,
-            max_tokens: 200
+            max_tokens: 200,
+            traceId: `red-team-summary-${this.assessmentId}-${vector}`,
+            traceName: 'red-team-vulnerability-summary-backend',
+            userId: this.userId,
+            sessionId: this.assessmentId,
+            metadata: {
+              assessmentId: this.assessmentId,
+              targetName: this.targetName,
+              phase: 'reporting',
+              operation: 'vulnerability_summary',
+              attackVector: vector
+            }
           });
 
           return {
@@ -762,7 +813,18 @@ Format as a numbered list of actionable items.`;
           { role: 'user', content: recommendationsPrompt }
         ],
         temperature: 0.3,
-        max_tokens: 600
+        max_tokens: 600,
+        traceId: `red-team-recommendations-${this.assessmentId}`,
+        traceName: 'red-team-recommendations-backend',
+        userId: this.userId,
+        sessionId: this.assessmentId,
+        metadata: {
+          assessmentId: this.assessmentId,
+          targetName: this.targetName,
+          phase: 'reporting',
+          operation: 'recommendations_generation',
+          vulnerabilitiesFound: summary.vulnerabilities
+        }
       });
 
       recommendations = recResponse.choices[0].message.content
