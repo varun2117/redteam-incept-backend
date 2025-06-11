@@ -1,23 +1,7 @@
 {
-     "version": 2,
-     "builds": [
-       {
-         "src": "api/simple.ts",
-         "use": "@vercel/node"
-       }
-     ],
-     "routes": [
-       {
-         "src": "/(.*)",
-         "dest": "api/simple.ts"
-       }
-     ],
-     "functions": {
-       "api/simple.ts": {
-         "maxDuration": 30
-       }
-     },
-     "env": {
-       "NODE_ENV": "production"
-     }
-   }
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 30
+    }
+  }
+}

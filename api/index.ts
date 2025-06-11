@@ -1,122 +1,115 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
+import { VercelRequest, VercelResponse } from '@vercel/node';
 
-// Load environment variables first
-dotenv.config();
-
-const app = express();
-
-// Simple CORS configuration
-app.use(cors({
-  origin: true, // Allow all origins for now
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
-
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Root health check
-app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Red Team Backend API is running',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    env: process.env.NODE_ENV || 'development'
-  });
-});
-
-// Simple health check
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    status: 'healthy',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Test route
-app.get('/api/test', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Test endpoint working',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Simple assessment endpoint without Prisma dependency initially
-app.post('/api/assessment/test', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Assessment endpoint test',
-    body: req.body,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Lazy load routes to avoid Prisma initialization issues
-app.use('/api/health', (req, res, next) => {
-  try {
-    const healthRoutes = require('../src/routes/health').default;
-    healthRoutes(req, res, next);
-  } catch (error) {
-    console.error('Error loading health routes:', error);
-    res.json({ success: true, status: 'healthy', message: 'Fallback health check' });
-  }
-});
-
-app.use('/api/assessment', (req, res, next) => {
-  // Skip test endpoint
-  if (req.path === '/test') return next();
+export default function handler(req: VercelRequest, res: VercelResponse) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   try {
-    const assessmentRoutes = require('../src/routes/assessment').default;
-    assessmentRoutes(req, res, next);
+    // Root endpoint
+    if (req.url === '/' || req.url === '/api') {
+      return res.status(200).json({
+        success: true,
+        message: 'Red Team Backend API is running on Vercel',
+        timestamp: new Date().toISOString(),
+        version: '1.0.0',
+        method: req.method,
+        url: req.url,
+        environment: process.env.NODE_ENV || 'development'
+      });
+    }
+
+    // Health check
+    if (req.url === '/health' || req.url === '/api/health') {
+      return res.status(200).json({
+        success: true,
+        status: 'healthy',
+        message: 'API is running normally',
+        timestamp: new Date().toISOString(),
+        checks: {
+          api: 'ok',
+          database: process.env.DATABASE_URL ? 'configured' : 'not configured',
+          langfuse: process.env.LANGFUSE_SECRET_KEY ? 'configured' : 'not configured'
+        }
+      });
+    }
+
+    // Test endpoint
+    if (req.url === '/test' || req.url === '/api/test') {
+      return res.status(200).json({
+        success: true,
+        message: 'Test endpoint working perfectly',
+        data: {
+          method: req.method,
+          headers: {
+            'user-agent': req.headers['user-agent'],
+            'content-type': req.headers['content-type']
+          },
+          body: req.body || null,
+          query: req.query || {},
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    // Simple echo endpoint for testing
+    if (req.url === '/echo' || req.url === '/api/echo') {
+      return res.status(200).json({
+        success: true,
+        echo: {
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          body: req.body,
+          query: req.query,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    // Environment info (for debugging)
+    if (req.url === '/env' || req.url === '/api/env') {
+      return res.status(200).json({
+        success: true,
+        environment: {
+          NODE_ENV: process.env.NODE_ENV || 'development',
+          platform: 'vercel',
+          region: process.env.VERCEL_REGION || 'unknown',
+          hasDatabase: !!process.env.DATABASE_URL,
+          hasLangfuse: !!process.env.LANGFUSE_SECRET_KEY,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+
+    // Default 404 response
+    return res.status(404).json({
+      success: false,
+      message: 'Endpoint not found',
+      path: req.url,
+      availableEndpoints: [
+        '/',
+        '/health',
+        '/test', 
+        '/echo',
+        '/env'
+      ],
+      timestamp: new Date().toISOString()
+    });
+
   } catch (error) {
-    console.error('Error loading assessment routes:', error);
-    res.status(503).json({ 
-      success: false, 
-      message: 'Assessment service temporarily unavailable',
-      error: 'Prisma client not ready'
+    console.error('Handler error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
     });
   }
-});
-
-app.use('/api/agent', (req, res, next) => {
-  try {
-    const agentRoutes = require('../src/routes/agent').default;
-    agentRoutes(req, res, next);
-  } catch (error) {
-    console.error('Error loading agent routes:', error);
-    res.status(503).json({ 
-      success: false, 
-      message: 'Agent service temporarily unavailable',
-      error: 'Prisma client not ready'
-    });
-  }
-});
-
-// Global error handler
-app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Global error handler:', error);
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
-  });
-});
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-    path: req.originalUrl
-  });
-});
-
-export default app;
+}
