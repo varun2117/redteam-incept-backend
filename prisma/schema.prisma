@@ -1,0 +1,65 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Assessment {
+  id                String   @id @default(cuid())
+  userId            String
+  targetName        String
+  targetDescription String?
+  status            String   @default("running") // running, completed, failed
+  systemAnalysis    String?  // JSON string
+  totalTests        Int      @default(0)
+  vulnerabilities   Int      @default(0)
+  securityScore     Float?
+  vulnerabilityReport String? // JSON string of the complete vulnerability report
+  riskLevel         String?  // Low, Medium, High, Critical
+  executionTime     String?
+  findings          Finding[]
+  exploitResults    ExploitResult[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Finding {
+  id                  String   @id @default(cuid())
+  assessmentId        String
+  vector              String
+  prompt              String
+  response            String
+  technique           String?
+  vulnerable          Boolean  @default(false)
+  vulnerabilityType   String?
+  severity            String?  // Low, Medium, High
+  explanation         String?
+  recommendations     String?
+  createdAt           DateTime @default(now())
+  
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+}
+
+model ExploitResult {
+  id                  String   @id @default(cuid())
+  assessmentId        String
+  exploitName         String
+  description         String?
+  stageNumber         Int
+  stagePurpose        String
+  prompt              String
+  response            String
+  vulnerabilityFound  Boolean  @default(false)
+  vulnerabilityType   String?
+  severity            String?
+  keyInformation      String?
+  createdAt           DateTime @default(now())
+  
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+}
