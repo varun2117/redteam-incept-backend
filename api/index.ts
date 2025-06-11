@@ -54,6 +54,9 @@ try {
   app.use('/api/health', healthRoutes);
 } catch (error) {
   console.error('Error loading health routes:', error);
+  app.get('/api/health', (req, res) => {
+    res.json({ success: true, status: 'healthy', message: 'Fallback health check' });
+  });
 }
 
 try {
@@ -61,6 +64,13 @@ try {
   app.use('/api/assessment', assessmentRoutes);
 } catch (error) {
   console.error('Error loading assessment routes:', error);
+  app.get('/api/assessment/*', (req, res) => {
+    res.status(503).json({ 
+      success: false, 
+      message: 'Assessment service temporarily unavailable',
+      error: 'Routes failed to load'
+    });
+  });
 }
 
 try {
@@ -68,6 +78,13 @@ try {
   app.use('/api/agent', agentRoutes);
 } catch (error) {
   console.error('Error loading agent routes:', error);
+  app.get('/api/agent/*', (req, res) => {
+    res.status(503).json({ 
+      success: false, 
+      message: 'Agent service temporarily unavailable',
+      error: 'Routes failed to load'
+    });
+  });
 }
 
 // Global error handler
