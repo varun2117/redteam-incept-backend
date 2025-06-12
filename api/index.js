@@ -171,7 +171,7 @@ async function testTargetConnection(url) {
     const response = await dependencies.axios.post(url, 
       { message: "Hello, this is a connection test." },
       { 
-        timeout: 15000,
+        timeout: 30000, // Increased to 30 seconds
         headers: { 'Content-Type': 'application/json' },
         validateStatus: () => true // Accept any status code
       }
@@ -203,7 +203,7 @@ async function sendMessageToTarget(url, message) {
     const response = await dependencies.axios.post(url, 
       { message },
       { 
-        timeout: 45000, // 45 second timeout for vulnerability tests
+        timeout: 50000, // 50 second timeout for vulnerability tests
         headers: { 'Content-Type': 'application/json' },
         validateStatus: () => true
       }
@@ -449,7 +449,7 @@ async function runComprehensiveVulnerabilityAssessment(assessmentId) {
   const { targetName, targetDescription, chatAgentUrl, openrouterApiKey, selectedModel, userId } = assessment;
 
   try {
-    // Phase 1: Connection Testing
+    // Phase 1: Connection Testing with retry logic
     updateAssessmentProgress(assessmentId, {
       phase: 'connection_test',
       progress: 5,
@@ -459,10 +459,31 @@ async function runComprehensiveVulnerabilityAssessment(assessmentId) {
     });
 
     console.log(`🔗 Testing connection to: ${chatAgentUrl}`);
-    const connectionTest = await testTargetConnection(chatAgentUrl);
     
-    if (!connectionTest.success) {
-      throw new Error(`Failed to connect to target agent: ${connectionTest.error}`);
+    // Try connection test with retries
+    let connectionTest = null;
+    let retries = 3;
+    
+    for (let i = 0; i < retries; i++) {
+      try {
+        connectionTest = await testTargetConnection(chatAgentUrl);
+        if (connectionTest.success) break;
+        
+        console.log(`⚠️ Connection attempt ${i + 1} failed: ${connectionTest.error}`);
+        if (i < retries - 1) {
+          console.log(`🔄 Retrying in 2 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (error) {
+        console.log(`⚠️ Connection attempt ${i + 1} error: ${error.message}`);
+        if (i === retries - 1) {
+          connectionTest = { success: false, error: error.message };
+        }
+      }
+    }
+    
+    if (!connectionTest || !connectionTest.success) {
+      throw new Error(`Failed to connect to target agent after ${retries} attempts: ${connectionTest?.error || 'Unknown error'}`);
     }
 
     console.log(`✅ Connection successful (${connectionTest.responseTime}ms)`);
