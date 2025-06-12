@@ -8,7 +8,9 @@
     "build": "echo 'No build needed for serverless functions'"
   },
   "dependencies": {
-    "@vercel/node": "^3.0.0"
+    "@vercel/node": "^3.0.0",
+    "axios": "^1.6.2",
+    "langfuse": "^3.37.4"
   },
   "devDependencies": {
     "@types/node": "^20.10.4",
