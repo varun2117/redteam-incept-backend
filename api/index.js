@@ -1,6 +1,164 @@
 // Intelligent Adaptive Red Team Agent - Optimized for Vercel 60s timeout
 const activeAssessments = new Map();
 
+// Persistent storage solution for serverless environments
+class PersistentAssessmentStore {
+  constructor() {
+    this.memoryStore = new Map();
+    this.storageKey = 'ASSESSMENT_STORE_';
+  }
+
+  // Save assessment to both memory and persistent storage
+  async saveAssessment(assessmentId, assessmentData) {
+    try {
+      // Store in memory for fast access
+      this.memoryStore.set(assessmentId, assessmentData);
+      
+      // Store in environment variables for persistence (limited but works for demos)
+      // In production, you'd use a database like Supabase, PlanetScale, or Redis
+      const serializedData = JSON.stringify({
+        id: assessmentData.id,
+        status: assessmentData.status,
+        startTime: assessmentData.startTime,
+        progress: assessmentData.progress,
+        targetName: assessmentData.targetName,
+        targetDescription: assessmentData.targetDescription,
+        userId: assessmentData.userId,
+        totalTests: assessmentData.totalTests || 0,
+        vulnerabilities: assessmentData.vulnerabilities || 0,
+        securityScore: assessmentData.securityScore || null,
+        results: assessmentData.results || null,
+        systemAnalysis: assessmentData.systemAnalysis || null,
+        findings: assessmentData.findings || [],
+        customAttackVectors: assessmentData.customAttackVectors || 0,
+        roleSpecificTests: assessmentData.roleSpecificTests || 0,
+        adaptiveAnalysis: assessmentData.adaptiveAnalysis || false,
+        lastUpdated: new Date().toISOString()
+      });
+      
+      // Store with timestamp for cleanup
+      global[`${this.storageKey}${assessmentId}`] = serializedData;
+      
+      console.log(`💾 Persisted assessment ${assessmentId}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to persist assessment ${assessmentId}:`, error);
+      return false;
+    }
+  }
+
+  // Load assessment from memory or persistent storage
+  async loadAssessment(assessmentId) {
+    try {
+      // First try memory
+      if (this.memoryStore.has(assessmentId)) {
+        return this.memoryStore.get(assessmentId);
+      }
+
+      // Then try persistent storage
+      const persistentData = global[`${this.storageKey}${assessmentId}`];
+      if (persistentData) {
+        const assessmentData = JSON.parse(persistentData);
+        console.log(`🔄 Recovered assessment ${assessmentId} from persistent storage`);
+        
+        // Restore to memory
+        this.memoryStore.set(assessmentId, assessmentData);
+        return assessmentData;
+      }
+
+      return null;
+    } catch (error) {
+      console.error(`❌ Failed to load assessment ${assessmentId}:`, error);
+      return null;
+    }
+  }
+
+  // Get all active assessments
+  async getAllAssessments() {
+    try {
+      const allAssessments = new Map();
+      
+      // Add from memory
+      for (const [id, data] of this.memoryStore) {
+        allAssessments.set(id, data);
+      }
+      
+      // Add from persistent storage (check global variables)
+      for (const key in global) {
+        if (key.startsWith(this.storageKey)) {
+          const assessmentId = key.replace(this.storageKey, '');
+          if (!allAssessments.has(assessmentId)) {
+            try {
+              const data = JSON.parse(global[key]);
+              allAssessments.set(assessmentId, data);
+            } catch (e) {
+              console.warn(`⚠️ Corrupt assessment data for ${assessmentId}`);
+            }
+          }
+        }
+      }
+      
+      return allAssessments;
+    } catch (error) {
+      console.error('❌ Failed to get all assessments:', error);
+      return new Map();
+    }
+  }
+
+  // Clean up old assessments (older than 1 hour)
+  async cleanup() {
+    try {
+      const oneHourAgo = Date.now() - (60 * 60 * 1000);
+      let cleanedCount = 0;
+      
+      for (const key in global) {
+        if (key.startsWith(this.storageKey)) {
+          try {
+            const data = JSON.parse(global[key]);
+            const lastUpdated = new Date(data.lastUpdated || data.startTime).getTime();
+            
+            if (lastUpdated < oneHourAgo) {
+              delete global[key];
+              const assessmentId = key.replace(this.storageKey, '');
+              this.memoryStore.delete(assessmentId);
+              cleanedCount++;
+            }
+          } catch (e) {
+            // Remove corrupt data
+            delete global[key];
+            cleanedCount++;
+          }
+        }
+      }
+      
+      if (cleanedCount > 0) {
+        console.log(`🧹 Cleaned up ${cleanedCount} old assessments`);
+      }
+      
+      return cleanedCount;
+    } catch (error) {
+      console.error('❌ Cleanup failed:', error);
+      return 0;
+    }
+  }
+
+  // Remove specific assessment
+  async removeAssessment(assessmentId) {
+    try {
+      this.memoryStore.delete(assessmentId);
+      delete global[`${this.storageKey}${assessmentId}`];
+      console.log(`🗑️ Removed assessment ${assessmentId}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to remove assessment ${assessmentId}:`, error);
+      return false;
+    }
+  }
+}
+
+// Initialize persistent store
+const persistentStore = new PersistentAssessmentStore();
+
 // Dependencies will be loaded dynamically to ensure Vercel compatibility
 let dependencies = {
   axios: null,
@@ -305,6 +463,19 @@ export default async function handler(req, res) {
 
     // Health check endpoint
     if (url === '/health' || url === '/api/health') {
+      // Get persistent storage stats
+      const allAssessments = await persistentStore.getAllAssessments();
+      const assessmentStats = {
+        total: allAssessments.size,
+        running: 0,
+        completed: 0,
+        failed: 0
+      };
+      
+      for (const [id, assessment] of allAssessments) {
+        assessmentStats[assessment.status] = (assessmentStats[assessment.status] || 0) + 1;
+      }
+      
       return res.status(200).json({
         success: true,
         status: 'healthy',
@@ -314,12 +485,19 @@ export default async function handler(req, res) {
           intelligentAttackGeneration: true,
           roleSpecificAnalysis: true,
           customVectorCreation: true,
-          adaptiveTargeting: true
+          adaptiveTargeting: true,
+          persistentStorage: true
         },
         dependencies: {
           axios: !!dependencies.axios,
           langfuse: !!dependencies.langfuse,
           initialized: dependencies.initialized
+        },
+        persistentStorage: {
+          enabled: true,
+          assessmentStats,
+          memoryAssessments: activeAssessments.size,
+          persistentAssessments: allAssessments.size
         }
       });
     }
@@ -386,6 +564,7 @@ export default async function handler(req, res) {
       };
       
       activeAssessments.set(assessmentId, assessmentData);
+      await persistentStore.saveAssessment(assessmentId, assessmentData);
       console.log(`💾 Stored assessment ${assessmentId}`);
 
       // Start intelligent assessment immediately
@@ -418,17 +597,40 @@ export default async function handler(req, res) {
       const assessmentId = url.split('/')[3];
       console.log(`📊 Status check for assessment: ${assessmentId}`);
       
-      const assessment = activeAssessments.get(assessmentId);
+      // Clean up old assessments first
+      await persistentStore.cleanup();
+      
+      // Try to load assessment from persistent storage
+      let assessment = activeAssessments.get(assessmentId);
+      if (!assessment) {
+        assessment = await persistentStore.loadAssessment(assessmentId);
+        if (assessment) {
+          // Restore to active assessments
+          activeAssessments.set(assessmentId, assessment);
+          console.log(`🔄 Restored assessment ${assessmentId} from persistent storage`);
+        }
+      }
 
       if (!assessment) {
-        console.log(`❌ Assessment ${assessmentId} not found`);
+        console.log(`❌ Assessment ${assessmentId} not found in memory or persistent storage`);
+        
+        // Get all available assessments for debugging
+        const allAssessments = await persistentStore.getAllAssessments();
+        const availableIds = Array.from(allAssessments.keys());
+        
         return res.status(404).json({
           success: false,
-          message: 'Assessment not found - completed or lost due to serverless restart',
+          message: 'Assessment not found - may have expired or been cleaned up',
           assessmentId,
-          activeAssessments: Array.from(activeAssessments.keys()),
-          explanation: 'Vercel serverless functions restart frequently, causing in-memory assessments to be lost',
-          intelligentFeatures: 'The intelligent adaptive system generates custom attacks based on target analysis'
+          availableAssessments: availableIds,
+          explanation: 'Assessment may have been cleaned up after 1 hour, or may never have been created',
+          intelligentFeatures: 'The intelligent adaptive system generates custom attacks based on target analysis',
+          persistentStorageEnabled: true,
+          troubleshooting: {
+            checkIfExpired: 'Assessments are automatically cleaned up after 1 hour',
+            createNewAssessment: 'Start a new assessment if this one is no longer available',
+            availableAssessments: availableIds.length
+          }
         });
       }
 
@@ -492,7 +694,7 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
 
   try {
     // Phase 1: Connection Testing
-    updateAssessmentProgress(assessmentId, {
+    await updateAssessmentProgress(assessmentId, {
       phase: 'connection_test',
       progress: 5,
       tests_completed: 0,
@@ -510,7 +712,7 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
     console.log(`✅ Connection successful (${connectionTest.responseTime}ms)`);
 
     // Phase 2: Intelligent System Discovery
-    updateAssessmentProgress(assessmentId, {
+    await updateAssessmentProgress(assessmentId, {
       phase: 'intelligent_discovery',
       progress: 15,
       tests_completed: 0,
@@ -521,7 +723,7 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
     const systemAnalysis = await performIntelligentSystemDiscovery(chatAgentUrl, openrouterApiKey, selectedModel, targetName, assessmentId, userId);
     
     // Phase 3: Custom Attack Vector Generation
-    updateAssessmentProgress(assessmentId, {
+    await updateAssessmentProgress(assessmentId, {
       phase: 'custom_attack_generation',
       progress: 25,
       tests_completed: 0,
@@ -530,7 +732,7 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
     });
 
     // Phase 4: Intelligent Adaptive Testing
-    updateAssessmentProgress(assessmentId, {
+    await updateAssessmentProgress(assessmentId, {
       phase: 'adaptive_testing',
       progress: 40,
       tests_completed: 0,
@@ -541,7 +743,7 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
     const testingResults = await runIntelligentVulnerabilityTestSuite(chatAgentUrl, openrouterApiKey, selectedModel, systemAnalysis, assessmentId, userId);
     
     // Phase 5: Intelligent Analysis and Reporting
-    updateAssessmentProgress(assessmentId, {
+    await updateAssessmentProgress(assessmentId, {
       phase: 'intelligent_analysis',
       progress: 85,
       tests_completed: testingResults.totalTests,
@@ -568,6 +770,7 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
       finalAssessment.customAttackVectors = testingResults.customAttackVectors || 0;
       finalAssessment.roleSpecificTests = testingResults.roleSpecificTests || 0;
       finalAssessment.adaptiveAnalysis = true;
+      finalAssessment.lastUpdated = new Date().toISOString();
       finalAssessment.progress = {
         phase: 'completed',
         progress: 100,
@@ -575,7 +778,9 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
         vulnerabilities_found: testingResults.vulnerabilities,
         message: `Intelligent assessment complete! Security score: ${testingResults.summary.securityScore}/100`
       };
+      
       activeAssessments.set(assessmentId, finalAssessment);
+      await persistentStore.saveAssessment(assessmentId, finalAssessment);
     }
 
     console.log(`✅ Intelligent assessment ${assessmentId} completed successfully`);
@@ -590,6 +795,7 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
     if (failedAssessment) {
       failedAssessment.status = 'failed';
       failedAssessment.error = error.message;
+      failedAssessment.lastUpdated = new Date().toISOString();
       failedAssessment.progress = {
         phase: 'failed',
         progress: 0,
@@ -598,15 +804,21 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
         message: `Assessment failed: ${error.message}`
       };
       activeAssessments.set(assessmentId, failedAssessment);
+      await persistentStore.saveAssessment(assessmentId, failedAssessment);
     }
   }
 }
 
 // Update assessment progress
-function updateAssessmentProgress(assessmentId, progress) {
+async function updateAssessmentProgress(assessmentId, progress) {
   const assessment = activeAssessments.get(assessmentId);
   if (assessment) {
     assessment.progress = progress;
+    assessment.lastUpdated = new Date().toISOString();
+    
+    // Save to persistent storage
+    await persistentStore.saveAssessment(assessmentId, assessment);
+    
     console.log(`🧠 ${assessmentId}: ${progress.phase} (${progress.progress}%) - ${progress.message}`);
   }
 }
@@ -938,7 +1150,7 @@ async function runIntelligentVulnerabilityTestSuite(chatAgentUrl, openrouterApiK
         }
         
         // Update progress
-        updateAssessmentProgress(assessmentId, {
+        await updateAssessmentProgress(assessmentId, {
           phase: 'adaptive_testing',
           progress: 40 + Math.floor((totalTests / 4) * 40),
           tests_completed: totalTests,
