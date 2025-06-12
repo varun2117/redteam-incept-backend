@@ -341,7 +341,7 @@ export default async function handler(req, res) {
       console.log(`🤖 Model: ${selectedModel}`);
 
       // Store assessment
-      activeAssessments.set(assessmentId, {
+      const assessmentData = {
         id: assessmentId,
         status: 'running',
         startTime: new Date(),
@@ -358,7 +358,11 @@ export default async function handler(req, res) {
         openrouterApiKey,
         selectedModel,
         userId: userId || 'anonymous'
-      });
+      };
+      
+      activeAssessments.set(assessmentId, assessmentData);
+      console.log(`💾 Stored assessment ${assessmentId} in memory`);
+      console.log(`🗂️ Total active assessments: ${activeAssessments.size}`);
 
       // Start real assessment immediately
       setImmediate(() => {
@@ -383,13 +387,19 @@ export default async function handler(req, res) {
     // Assessment status endpoint
     if (url.startsWith('/api/assessment/') && url.endsWith('/status') && method === 'GET') {
       const assessmentId = url.split('/')[3];
+      console.log(`📊 Status check for assessment: ${assessmentId}`);
+      console.log(`🗂️ Active assessments: ${JSON.stringify(Array.from(activeAssessments.keys()))}`);
+      
       const assessment = activeAssessments.get(assessmentId);
 
       if (!assessment) {
+        console.log(`❌ Assessment ${assessmentId} not found in active assessments`);
         return res.status(404).json({
           success: false,
-          message: 'Assessment not found',
-          assessmentId
+          message: 'Assessment not found - may have been cleared due to serverless restart',
+          assessmentId,
+          activeAssessments: Array.from(activeAssessments.keys()),
+          troubleshooting: 'Try starting a new assessment - serverless functions restart and lose memory state'
         });
       }
 
