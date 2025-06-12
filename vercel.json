@@ -1,10 +1,14 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 300
+  "builds": [
+    {
+      "src": "api/index.js",
+      "use": "@vercel/node",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     }
-  },
+  ],
   "routes": [
     {
       "src": "/api/(.*)",
@@ -19,5 +23,12 @@
       "dest": "/api/index.js"
     }
   ],
-  "outputDirectory": "public"
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 300
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
 }
