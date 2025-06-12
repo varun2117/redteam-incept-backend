@@ -2,7 +2,7 @@
   "name": "red-team-backend",
   "version": "1.0.0",
   "description": "Backend service for LLM Red Team Agent",
-  "main": "api/index.ts",
+  "main": "api/index.js",
   "scripts": {
     "dev": "vercel dev",
     "build": "echo 'No build needed for serverless functions'"

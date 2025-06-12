@@ -1,24 +1,40 @@
-// Real vulnerability testing with OpenRouter and Langfuse
-const axios = require('axios');
-const { Langfuse } = require('langfuse');
-
+// Real vulnerability testing with OpenRouter and Langfuse using dynamic imports
 const activeAssessments = new Map();
 
-// Initialize Langfuse client
+// Dynamic imports for dependencies
+let axios = null;
+let Langfuse = null;
 let langfuseClient = null;
-try {
-  if (process.env.LANGFUSE_SECRET_KEY && process.env.LANGFUSE_PUBLIC_KEY) {
-    langfuseClient = new Langfuse({
-      secretKey: process.env.LANGFUSE_SECRET_KEY,
-      publicKey: process.env.LANGFUSE_PUBLIC_KEY,
-      baseUrl: process.env.LANGFUSE_HOST || 'https://cloud.langfuse.com'
-    });
-    console.log('✅ Langfuse initialized successfully');
-  } else {
-    console.warn('⚠️ Langfuse not configured - missing environment variables');
+
+// Initialize dependencies asynchronously
+async function initializeDependencies() {
+  try {
+    // Dynamic import for axios
+    const axiosModule = await import('axios');
+    axios = axiosModule.default;
+    
+    // Dynamic import for Langfuse
+    const langfuseModule = await import('langfuse');
+    Langfuse = langfuseModule.Langfuse;
+    
+    // Initialize Langfuse client
+    if (process.env.LANGFUSE_SECRET_KEY && process.env.LANGFUSE_PUBLIC_KEY) {
+      langfuseClient = new Langfuse({
+        secretKey: process.env.LANGFUSE_SECRET_KEY,
+        publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+        baseUrl: process.env.LANGFUSE_HOST || 'https://cloud.langfuse.com'
+      });
+      console.log('✅ Langfuse initialized successfully');
+    } else {
+      console.warn('⚠️ Langfuse not configured - missing environment variables');
+    }
+    
+    console.log('✅ Dependencies initialized successfully');
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to initialize dependencies:', error);
+    return false;
   }
-} catch (error) {
-  console.error('❌ Failed to initialize Langfuse:', error);
 }
 
 // OpenRouter API client
@@ -166,6 +182,18 @@ export default async function handler(req, res) {
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Initialize dependencies if not already done
+  if (!axios) {
+    const initialized = await initializeDependencies();
+    if (!initialized) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to initialize dependencies',
+        timestamp: new Date().toISOString()
+      });
+    }
   }
 
   try {
