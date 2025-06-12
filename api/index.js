@@ -171,7 +171,7 @@ async function testTargetConnection(url) {
     const response = await dependencies.axios.post(url, 
       { message: "Hello, this is a connection test." },
       { 
-        timeout: 30000, // Increased to 30 seconds
+        timeout: 120000, // 2 minutes for connection test
         headers: { 'Content-Type': 'application/json' },
         validateStatus: () => true // Accept any status code
       }
@@ -203,7 +203,7 @@ async function sendMessageToTarget(url, message) {
     const response = await dependencies.axios.post(url, 
       { message },
       { 
-        timeout: 50000, // 50 second timeout for vulnerability tests
+        timeout: 300000, // 5 minutes for vulnerability tests
         headers: { 'Content-Type': 'application/json' },
         validateStatus: () => true
       }
