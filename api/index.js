@@ -656,6 +656,90 @@ export default async function handler(req, res) {
       });
     }
 
+    // Assessment stop/cancel endpoint
+    if (url.startsWith('/api/assessment/') && url.endsWith('/stop') && method === 'POST') {
+      const assessmentId = url.split('/')[3];
+      console.log(`🛑 Stop request for assessment: ${assessmentId}`);
+      
+      // Clean up old assessments first
+      await persistentStore.cleanup();
+      
+      // Try to load assessment from persistent storage
+      let assessment = activeAssessments.get(assessmentId);
+      if (!assessment) {
+        assessment = await persistentStore.loadAssessment(assessmentId);
+        if (assessment) {
+          activeAssessments.set(assessmentId, assessment);
+          console.log(`🔄 Restored assessment ${assessmentId} for stopping`);
+        }
+      }
+
+      if (!assessment) {
+        console.log(`❌ Assessment ${assessmentId} not found for stopping`);
+        return res.status(404).json({
+          success: false,
+          message: 'Assessment not found or already completed',
+          assessmentId
+        });
+      }
+
+      // Check if assessment can be stopped
+      if (assessment.status === 'completed' || assessment.status === 'failed') {
+        return res.status(400).json({
+          success: false,
+          message: `Assessment is already ${assessment.status} and cannot be stopped`,
+          assessmentId,
+          currentStatus: assessment.status
+        });
+      }
+
+      // Stop the assessment
+      assessment.status = 'stopped';
+      assessment.lastUpdated = new Date().toISOString();
+      assessment.progress = {
+        phase: 'stopped',
+        progress: assessment.progress?.progress || 0,
+        tests_completed: assessment.progress?.tests_completed || 0,
+        vulnerabilities_found: assessment.progress?.vulnerabilities_found || 0,
+        message: 'Assessment stopped by user request'
+      };
+
+      // Save the stopped state
+      activeAssessments.set(assessmentId, assessment);
+      await persistentStore.saveAssessment(assessmentId, assessment);
+
+      console.log(`✅ Assessment ${assessmentId} stopped successfully`);
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Assessment stopped successfully',
+        assessmentId,
+        previousStatus: 'running',
+        newStatus: 'stopped',
+        stoppedAt: new Date().toISOString(),
+        finalProgress: assessment.progress
+      });
+    }
+
+    // Assessment delete endpoint
+    if (url.startsWith('/api/assessment/') && url.endsWith('/delete') && method === 'DELETE') {
+      const assessmentId = url.split('/')[3];
+      console.log(`🗑️ Delete request for assessment: ${assessmentId}`);
+      
+      // Remove from both memory and persistent storage
+      activeAssessments.delete(assessmentId);
+      await persistentStore.removeAssessment(assessmentId);
+      
+      console.log(`✅ Assessment ${assessmentId} deleted successfully`);
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Assessment deleted successfully',
+        assessmentId,
+        deletedAt: new Date().toISOString()
+      });
+    }
+
     // Default 404 response
     return res.status(404).json({
       success: false,
@@ -665,7 +749,9 @@ export default async function handler(req, res) {
         'GET / - API information',
         'GET /health - Health check', 
         'POST /api/assessment/start - Start intelligent adaptive assessment',
-        'GET /api/assessment/{id}/status - Get assessment status'
+        'GET /api/assessment/{id}/status - Get assessment status',
+        'POST /api/assessment/{id}/stop - Stop running assessment',
+        'DELETE /api/assessment/{id}/delete - Delete assessment'
       ]
     });
 
@@ -693,6 +779,13 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
   const { targetName, targetDescription, chatAgentUrl, openrouterApiKey, selectedModel, userId } = assessment;
 
   try {
+    // Check if assessment was stopped before starting
+    const currentAssessment = activeAssessments.get(assessmentId);
+    if (!currentAssessment || currentAssessment.status === 'stopped') {
+      console.log(`🛑 Assessment ${assessmentId} was stopped before execution`);
+      return;
+    }
+
     // Phase 1: Connection Testing
     await updateAssessmentProgress(assessmentId, {
       phase: 'connection_test',
@@ -711,6 +804,13 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
 
     console.log(`✅ Connection successful (${connectionTest.responseTime}ms)`);
 
+    // Check if stopped after connection test
+    const checkAfterConnection = activeAssessments.get(assessmentId);
+    if (!checkAfterConnection || checkAfterConnection.status === 'stopped') {
+      console.log(`🛑 Assessment ${assessmentId} stopped after connection test`);
+      return;
+    }
+
     // Phase 2: Intelligent System Discovery
     await updateAssessmentProgress(assessmentId, {
       phase: 'intelligent_discovery',
@@ -721,6 +821,13 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
     });
 
     const systemAnalysis = await performIntelligentSystemDiscovery(chatAgentUrl, openrouterApiKey, selectedModel, targetName, assessmentId, userId);
+    
+    // Check if stopped after system discovery
+    const checkAfterDiscovery = activeAssessments.get(assessmentId);
+    if (!checkAfterDiscovery || checkAfterDiscovery.status === 'stopped') {
+      console.log(`🛑 Assessment ${assessmentId} stopped after system discovery`);
+      return;
+    }
     
     // Phase 3: Custom Attack Vector Generation
     await updateAssessmentProgress(assessmentId, {
@@ -741,6 +848,13 @@ async function runIntelligentAdaptiveAssessment(assessmentId) {
     });
 
     const testingResults = await runIntelligentVulnerabilityTestSuite(chatAgentUrl, openrouterApiKey, selectedModel, systemAnalysis, assessmentId, userId);
+    
+    // Check if stopped after testing
+    const checkAfterTesting = activeAssessments.get(assessmentId);
+    if (!checkAfterTesting || checkAfterTesting.status === 'stopped') {
+      console.log(`🛑 Assessment ${assessmentId} stopped after testing phase`);
+      return;
+    }
     
     // Phase 5: Intelligent Analysis and Reporting
     await updateAssessmentProgress(assessmentId, {
