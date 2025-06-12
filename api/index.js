@@ -184,11 +184,20 @@ async function testTargetConnection(url) {
       error: response.status >= 400 ? `HTTP ${response.status}` : null
     };
   } catch (error) {
+    const errorMessage = error.code === 'ECONNABORTED' ? 'Connection timeout (2 minutes)' : 
+                        error.code === 'ENOTFOUND' ? 'DNS resolution failed - domain not found' :
+                        error.code === 'ECONNREFUSED' ? 'Connection refused - service not running' :
+                        error.message;
+    
+    console.log(`❌ Connection test failed: ${errorMessage}`);
+    console.log(`🔍 Error details - Code: ${error.code}, URL: ${url}`);
+    
     return {
       success: false,
-      error: error.code === 'ECONNABORTED' ? 'Connection timeout' : error.message,
+      error: errorMessage,
       responseTime: Date.now() - startTime,
-      statusCode: null
+      statusCode: null,
+      errorCode: error.code
     };
   }
 }
@@ -333,6 +342,20 @@ export default async function handler(req, res) {
         });
       }
 
+      // Clean and validate target URL
+      let cleanedUrl = chatAgentUrl.trim();
+      try {
+        const urlObj = new URL(cleanedUrl);
+        console.log(`🔗 Cleaned target URL: ${cleanedUrl}`);
+        console.log(`🌐 URL components - Host: ${urlObj.host}, Path: ${urlObj.pathname}`);
+      } catch (urlError) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid target URL format: ${urlError.message}`,
+          providedUrl: chatAgentUrl
+        });
+      }
+
       // Generate assessment ID
       const assessmentId = 'assess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 12);
       
@@ -354,7 +377,7 @@ export default async function handler(req, res) {
         },
         targetName,
         targetDescription: targetDescription || '',
-        chatAgentUrl,
+        chatAgentUrl: cleanedUrl,
         openrouterApiKey,
         selectedModel,
         userId: userId || 'anonymous'
